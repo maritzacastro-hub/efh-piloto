@@ -8,7 +8,7 @@ st.title("Dashboard EFH – Piloto (Métricas por fold)")
 
 @st.cache_data
 def load_metrics():
-    return pd.read_csv("public_results/metrics_by_fold.csv")
+    return pd.read_csv("metrics_by_fold.csv")
 
 df = load_metrics()
 
@@ -33,4 +33,5 @@ with col2:
 # conclusión simple
 mean_auc = df.groupby("Modelo")["AUC"].mean()
 best_model = mean_auc.idxmax()
+
 st.success(f"Modelo recomendado por AUC promedio: **{best_model}**")
