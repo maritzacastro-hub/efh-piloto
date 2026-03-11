@@ -347,7 +347,8 @@ with col3:
     cap_pen_ent = st.number_input(VAR_LABELS["cap_pen_ent"], min_value=0, value=0, step=500000)
     hr_trabajadas_pr = st.slider(VAR_LABELS["hr_trabajadas_pr"], 0, 80, 45)
 
-st.subheader("Instrumentos financieros (0/1)")
+st.subheader("Instrumentos financieros)")
+st.caption("Marca la celda si haz utilizado los siguientes instrumentos financieros")
 b1, b2, b3, b4 = st.columns(4)
 
 with b1:
@@ -677,6 +678,7 @@ if have_fold_metrics:
     st.success(f"📌 Según el **AUC promedio (OOF)**, el modelo recomendado es: **{best_model}**.")
 else:
     st.info("No hay métricas por fold cargadas. (Falta public_results/metrics_by_fold.csv)")
+
 
 
 
