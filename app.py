@@ -678,3 +678,4 @@ if have_fold_metrics:
 else:
     st.info("No hay métricas por fold cargadas. (Falta public_results/metrics_by_fold.csv)")
 
+
