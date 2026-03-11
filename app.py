@@ -291,7 +291,7 @@ from pathlib import Path
 st.header("🧮 Calculadora de probabilidad de vivienda propia")
 
 BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "public_results" / "model_lr_18.joblib"
+MODEL_PATH = BASE_DIR / "model_lr_18.joblib"
 
 @st.cache_resource(show_spinner=False)
 def load_mlp_model(model_path: Path):
@@ -677,5 +677,6 @@ if have_fold_metrics:
     st.success(f"📌 Según el **AUC promedio (OOF)**, el modelo recomendado es: **{best_model}**.")
 else:
     st.info("No hay métricas por fold cargadas. (Falta public_results/metrics_by_fold.csv)")
+
 
 
