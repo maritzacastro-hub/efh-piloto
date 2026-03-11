@@ -10,6 +10,7 @@ st.set_page_config(layout="wide")  # debe ir primero
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import joblib
 
 # ---------------------------------------------------------------
 #   PALETA WOW
@@ -81,26 +82,124 @@ st.markdown(f"""
 # ---------------------------------------------------------------
 @st.cache_data
 def load_public_eda():
-    summary = pd.read_csv("eda_summary.csv")
-    meta = pd.read_csv("eda_meta.csv")
-    num_stats = pd.read_csv("eda_num_stats.csv")
-    num_hist = pd.read_csv("eda_num_hist.csv.gz", compression="gzip")
-    cat_counts = pd.read_csv("eda_cat_counts.csv.gz", compression="gzip")
-    biv_num = pd.read_csv("eda_biv_num.csv")
-    biv_cat = pd.read_csv("eda_biv_cat.csv.gz", compression="gzip")
-    corr_long = pd.read_csv("eda_corr.csv.gz", compression="gzip")
+    summary = pd.read_csv("public_results/eda_summary.csv")
+    meta = pd.read_csv("public_results/eda_meta.csv")
+    num_stats = pd.read_csv("public_results/eda_num_stats.csv")
+    num_hist = pd.read_csv("public_results/eda_num_hist.csv.gz", compression="gzip")
+    cat_counts = pd.read_csv("public_results/eda_cat_counts.csv.gz", compression="gzip")
+    biv_num = pd.read_csv("public_results/eda_biv_num.csv")
+    biv_cat = pd.read_csv("public_results/eda_biv_cat.csv.gz", compression="gzip")
+    corr_long = pd.read_csv("public_results/eda_corr.csv.gz", compression="gzip")
     return summary, meta, num_stats, num_hist, cat_counts, biv_num, biv_cat, corr_long
 
 @st.cache_data
-def load_metrics_by_fold(path="metrics_by_fold.csv"):
+def load_metrics_by_fold(path="public_results/metrics_by_fold.csv"):
     return pd.read_csv(path)
+
+# ✅ Defaults (para que meta exista siempre)
+summary = pd.DataFrame({"n_registros":[0], "pct_viv_propia":[0.0]})
+meta = pd.DataFrame(columns=["var","type"])
+num_stats = pd.DataFrame()
+num_hist = pd.DataFrame()
+cat_counts = pd.DataFrame()
+biv_num = pd.DataFrame()
+biv_cat = pd.DataFrame()
+corr_long = pd.DataFrame()
 
 try:
     summary, meta, num_stats, num_hist, cat_counts, biv_num, biv_cat, corr_long = load_public_eda()
 except Exception as e:
-    st.error("No pude cargar EDA desde public_results/. Revisa que existan los archivos eda_*.csv.")
+    st.warning("No pude cargar EDA desde public_results/. El tablero seguirá solo con la calculadora.")
     st.caption(str(e))
-    st.stop()
+
+
+# ---------------------------------------------------------------
+# NORMALIZACIÓN DE COLUMNAS (compatibilidad public_results)
+# ---------------------------------------------------------------
+def _strip_cols(df):
+    df.columns = [str(c).strip() for c in df.columns]
+    return df
+
+def _rename_first_match(df, target, candidates):
+    if target in df.columns:
+        return df
+    for c in candidates:
+        if c in df.columns:
+            return df.rename(columns={c: target})
+    return df
+
+def normalize_public_tables():
+    global summary, meta, num_stats, num_hist, cat_counts, biv_num, biv_cat, corr_long
+
+    # limpiar espacios
+    for name in ["summary","meta","num_stats","num_hist","cat_counts","biv_num","biv_cat","corr_long"]:
+        df = globals().get(name, None)
+        if df is not None and isinstance(df, pd.DataFrame) and not df.empty:
+            globals()[name] = _strip_cols(df)
+
+    # ---- meta ----
+    if meta is not None and isinstance(meta, pd.DataFrame) and not meta.empty:
+        meta = _rename_first_match(meta, "var",  ["variable","Variable","VAR","feature","col","name"])
+        meta = _rename_first_match(meta, "type", ["tipo","Tipo","TYPE","dtype","var_type"])
+    else:
+        meta = pd.DataFrame(columns=["var","type"])
+
+    # ---- cat_counts ----
+    if cat_counts is not None and isinstance(cat_counts, pd.DataFrame) and not cat_counts.empty:
+        cat_counts = _rename_first_match(cat_counts, "var",      ["variable","Variable","VAR","feature","name"])
+        cat_counts = _rename_first_match(cat_counts, "category", ["categoria","Categoría","cat","nivel","level","value"])
+        cat_counts = _rename_first_match(cat_counts, "n",        ["count","Count","freq","frequency","N"])
+        # macrozona: si no existe, crear "All"
+        if "macrozona" not in cat_counts.columns:
+            cat_counts["macrozona"] = "All"
+    else:
+        cat_counts = pd.DataFrame(columns=["macrozona","var","category","n"])
+
+    # ---- num_hist ----
+    if num_hist is not None and isinstance(num_hist, pd.DataFrame) and not num_hist.empty:
+        num_hist = _rename_first_match(num_hist, "var",      ["variable","Variable","VAR","feature","name"])
+        num_hist = _rename_first_match(num_hist, "bin_left", ["left","bin_l","lower","li","min"])
+        num_hist = _rename_first_match(num_hist, "bin_right",["right","bin_r","upper","ls","max"])
+        num_hist = _rename_first_match(num_hist, "count",    ["n","Count","freq","frequency","N"])
+        if "macrozona" not in num_hist.columns:
+            num_hist["macrozona"] = "All"
+    else:
+        num_hist = pd.DataFrame(columns=["macrozona","var","bin_left","bin_right","count"])
+
+    # ---- num_stats ----
+    if num_stats is not None and isinstance(num_stats, pd.DataFrame) and not num_stats.empty:
+        num_stats = _rename_first_match(num_stats, "var", ["variable","Variable","VAR","feature","name"])
+        if "macrozona" not in num_stats.columns:
+            num_stats["macrozona"] = "All"
+    else:
+        num_stats = pd.DataFrame(columns=["macrozona","var"])
+
+    # ---- biv_num / biv_cat ----
+    for nm in ["biv_num","biv_cat"]:
+        df = globals().get(nm, None)
+        if df is not None and isinstance(df, pd.DataFrame) and not df.empty:
+            df = _rename_first_match(df, "var", ["variable","Variable","VAR","feature","name"])
+            if "macrozona" not in df.columns:
+                df["macrozona"] = "All"
+            globals()[nm] = df
+
+    # ---- corr_long ----
+    if corr_long is not None and isinstance(corr_long, pd.DataFrame) and not corr_long.empty:
+        corr_long = _rename_first_match(corr_long, "var1", ["x","v1","variable1","Variable1"])
+        corr_long = _rename_first_match(corr_long, "var2", ["y","v2","variable2","Variable2"])
+        corr_long = _rename_first_match(corr_long, "corr", ["cor","correlacion","correlation","value"])
+    else:
+        corr_long = pd.DataFrame(columns=["var1","var2","corr"])
+
+    # 🔎 si aún falta algo esencial, mostrar columnas y detener
+    if "var" not in cat_counts.columns or "category" not in cat_counts.columns:
+        st.error("cat_counts no tiene las columnas esperadas después de normalizar.")
+        st.write("cat_counts columns:", list(cat_counts.columns))
+        st.stop()
+
+normalize_public_tables()
+
+
 
 try:
     df_metrics_fold = load_metrics_by_fold()
@@ -114,19 +213,29 @@ except Exception as e:
 MACRO = "All"
 
 # ---------------------------------------------------------------
+#   COMPATIBILIDAD: si los CSV públicos no traen 'macrozona'
+#   asumimos que todo corresponde a "All"
+# ---------------------------------------------------------------
+for df in (num_stats, num_hist, cat_counts, biv_num, biv_cat):
+    if df is not None and "macrozona" not in df.columns:
+        df["macrozona"] = "All"
+
+# ---------------------------------------------------------------
 #   DEFINICIÓN DE VARIABLES (las 18)
 # ---------------------------------------------------------------
 vars_rep = [
     # Numéricas
     'act_fijo', 'act_var', 'cap_pen_ent', 'edad_pr', 'hr_trabajadas_pr', 'yoprinm_pr', 'ypenh', 'ysubh',
     # Binarias
-    't_cc', 't_tbco', 'u_cheq', 'u_pac', 'u_pat', 'u_tbco', 'u_tprepago',
+    't_cc', 't_tbco', 'u_cheq', 'u_pac', 'u_pat', 'u_tbco', 'u_prepago',
     # Categóricas
     'est_civil_pr', 'numh', 'ocuph',
 ]
 
-available_vars = set(meta["var"].unique())
+available_vars = set(meta["var"].unique()) if (meta is not None and not meta.empty) else set(vars_rep)
 vars_rep = [v for v in vars_rep if v in available_vars]
+
+
 
 num_vars = meta.loc[meta["type"] == "numeric", "var"].tolist()
 cat_vars = meta.loc[meta["type"] != "numeric", "var"].tolist()
@@ -152,6 +261,191 @@ var = st.session_state["var_selected"]
 #   TÍTULO PRINCIPAL
 # ---------------------------------------------------------------
 st.markdown("<h1>Dashboard Encuesta Financiera de Hogares 2021</h1>", unsafe_allow_html=True)
+
+VAR_LABELS = {
+    "yoprinm_pr": "ingreso mensual de la persona de referencia del hogar",
+    "act_fijo": "monto total de activos financieros de renta fija",
+    "act_var": "monto total que el hogar tiene invertido en los diferentes instrumentos de renta variable.",
+    "cap_pen_ent": "saldo en cuenta de capitalización individual ",
+    "edad_pr": "edad de la persona de referencia",
+    "hr_trabajadas_pr": "horas trabajadas por la persona de referencia",
+    "ypenh": "ingreso mensual del hogar por pensiones",
+    "ysubh": "ingreso mensual del hogar por subsidios",
+    "numh": "número de miembros en el hogar",
+    "ocuph": "número de miembros del hogar que se encuentra trabajando",
+    "u_pac": "si algún miembro del hogar utiliza pago automático a las cuentas corrientes",
+    "t_tbco": "si algún miembro del hogar posee tarjetas de crédito bancarias",
+    "u_pat": "si algún miembro del hogar utiliza pago automático a tarjetas de crédito",
+    "u_tbco": "si algún miembro del hogar utiliza como medio de pago las tarjetas de crédito bancarias",
+    "u_cheq": "si algún miembro del hogar utiliza como medio de pago los cheques",
+    "t_cc": "si algún miembro del hogar posee cuenta corriente",
+    "u_prepago": "si algún miembro del hogar utiliza como medio de pago los instrumentos de prepago",
+    "est_civil_pr": "estado civil de la persona de referencia",
+    
+}
+
+from pathlib import Path
+
+# ---------------------------------------------------------------
+#   SECCIÓN 0 — CALCULADORA DE PROBABILIDAD
+# ---------------------------------------------------------------
+st.header("🧮 Calculadora de probabilidad de vivienda propia")
+
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_PATH = BASE_DIR / "public_results" / "model_lr_18.joblib"
+
+@st.cache_resource(show_spinner=False)
+def load_mlp_model(model_path: Path):
+    return joblib.load(model_path)
+
+model_mlp = None
+try:
+    model_mlp = load_mlp_model(MODEL_PATH)
+except Exception as e:
+    st.error(f"No pude cargar el modelo en: {MODEL_PATH}")
+    st.caption(str(e))
+    st.stop()
+
+# ✅ Safety extra (por si Streamlit re-ejecuta raro)
+if model_mlp is None:
+    st.error("El modelo no quedó cargado (model_mlp=None). Revisa el archivo joblib.")
+    st.stop()
+
+solo_calculadora = st.toggle("Modo simple (solo calculadora)", value=True)
+st.caption("En modo simple se muestra únicamente la calculadora para evitar dependencias de EDA.")
+    
+
+# Inputs (puedes ajustar rangos luego)
+col1, col2, col3 = st.columns(3)
+
+
+#st.subheader("Perfiles rápidos (ejemplos)")
+
+#if st.button("Perfil A: baja bancarización"):
+    #st.session_state.update({
+        #"u_pac": False, "t_cc": False, "t_tbco": False, "u_tbco": False, "u_pat": False, "u_cheq": False, "u_prepago": False
+    #})
+
+#if st.button("Perfil B: alta bancarización"):
+    #st.session_state.update({
+        #"u_pac": True, "t_cc": True, "t_tbco": True, "u_tbco": True, "u_pat": True, "u_cheq": False, "u_prepago": True
+    #})
+
+
+with col1:
+    edad_pr = st.slider(VAR_LABELS["edad_pr"], 18, 100, 40)
+    numh = st.slider(VAR_LABELS["numh"], 1, 12, 3)
+    ocuph = st.slider(VAR_LABELS["ocuph"], 0, int(numh), 1)  # default 1
+
+with col2:
+    yoprinm_pr = st.number_input(VAR_LABELS["yoprinm_pr"], min_value=0, value=700000, step=50000)
+    ypenh = st.number_input(VAR_LABELS["ypenh"], min_value=0, value=0, step=50000)
+    ysubh = st.number_input(VAR_LABELS["ysubh"], min_value=0, value=0, step=50000)
+
+with col3:
+    act_fijo = st.number_input(VAR_LABELS["act_fijo"], min_value=0, value=0, step=500000)
+    act_var = st.number_input(VAR_LABELS["act_var"], min_value=0, value=0, step=500000)
+    cap_pen_ent = st.number_input(VAR_LABELS["cap_pen_ent"], min_value=0, value=0, step=500000)
+    hr_trabajadas_pr = st.slider(VAR_LABELS["hr_trabajadas_pr"], 0, 80, 45)
+
+st.subheader("Instrumentos financieros (0/1)")
+b1, b2, b3, b4 = st.columns(4)
+
+with b1:
+    u_pac = st.checkbox(VAR_LABELS["u_pac"], value=False, key= "u_pac")
+    t_cc = st.checkbox(VAR_LABELS["t_cc"], value=False, key= "t_cc")
+
+with b2:
+    t_tbco = st.checkbox(VAR_LABELS["t_tbco"], value=False, key= "t_tbco")
+    u_tbco = st.checkbox(VAR_LABELS["u_tbco"], value=False, key= "u_tbco")
+
+with b3:
+    u_pat = st.checkbox(VAR_LABELS["u_pat"], value=False, key= "u_pat")
+    u_cheq = st.checkbox(VAR_LABELS["u_cheq"], value=False, key= "u_cheq")
+
+with b4:
+    u_prepago = st.checkbox(VAR_LABELS["u_prepago"], value=False, key= "u_prepago")
+
+st.subheader("Estado civil")
+est_civil_pr = st.selectbox(
+    VAR_LABELS["est_civil_pr"],
+    options=["Soltero(a)", "Casado(a)", "Conviviente o pareja", "Divorciado(a)", "Viudo(a)", "Separado(a)"]
+)
+
+def money_to_model(x):
+    x = max(float(x), 0.0)
+    return np.log1p(x)
+
+modo_estricto = st.checkbox("Aplicar validación de coherencia (recomendado)", value=True)   
+
+
+# --- Coherencia de inputs (advertencia + opción estricta) ---
+adj_yop = yoprinm_pr
+adj_hr = hr_trabajadas_pr
+
+# Advertencia si hay incoherencia típica
+if ocuph == 0 and (yoprinm_pr > 0 or hr_trabajadas_pr > 0):
+    st.warning("Advertencia: Ocupados=0 pero hay ingreso por actividad principal y/o horas trabajadas. "
+               "Puede ser un caso atípico y afectar la estimación.")
+
+# Si activas modo estricto, se fuerza coherencia laboral
+if modo_estricto and ocuph == 0:
+    adj_yop = 0.0
+    adj_hr = 0
+
+# Si horas=0 y aún hay ingreso principal, también es inconsistente (opcional)
+if modo_estricto and adj_hr == 0 and adj_yop > 0:
+    adj_yop = 0.0
+
+
+# Construir fila de entrada con las 18 variables exactas
+x_in = pd.DataFrame([{
+    "act_fijo": money_to_model(act_fijo),
+    "act_var": money_to_model(act_var),
+    "cap_pen_ent": money_to_model(cap_pen_ent),
+    "yoprinm_pr": money_to_model(adj_yop),
+    "ypenh": money_to_model(ypenh),
+    "ysubh": money_to_model(ysubh),
+
+    # estas se dejan tal cual (no son montos monetarios)
+    "edad_pr": edad_pr,
+    "hr_trabajadas_pr": adj_hr,
+    "numh": numh,
+    "ocuph": ocuph,
+
+    # binarias
+    "t_cc": int(t_cc),
+    "t_tbco": int(t_tbco),
+    "u_cheq": int(u_cheq),
+    "u_pac": int(u_pac),
+    "u_pat": int(u_pat),
+    "u_tbco": int(u_tbco),
+    "u_prepago": int(u_prepago),
+
+    # categórica
+    "est_civil_pr": est_civil_pr,
+}])
+
+p = float(model_mlp.predict_proba(x_in)[0, 1])
+st.metric("Probabilidad estimada de vivienda propia", f"{100*p:.2f}%")
+st.caption(f"p = {p:.6f}")
+
+st.progress(min(max(p, 0.0), 1.0))
+
+if p < 0.33:
+    st.info("Interpretación: probabilidad baja (según el modelo).")
+elif p < 0.66:
+    st.warning("Interpretación: probabilidad media (según el modelo).")
+else:
+    st.success("Interpretación: probabilidad alta (según el modelo).")
+
+st.caption("Nota: la aplicación no carga microdatos EFH. Utiliza resultados agregados en public_results/ "
+           "y un modelo entrenado para calcular la probabilidad.")
+
+
+if solo_calculadora:
+    st.stop()
+
 
 # ---------------------------------------------------------------
 #   SECCIÓN 1 — MÉTRICAS (igual, pero desde eda_summary)
@@ -221,27 +515,6 @@ def pseudo_biv_numeric(var_name: str, n_each: int = 2000) -> pd.DataFrame:
 # ---------------------------------------------------------------
 st.header("📊 2. Análisis Univariadas")
 
-VAR_LABELS = {
-    "yoprinm_pr": "ingreso mensual de la persona de referencia del hogar",
-    "act_fijo": "monto total de activos financieros de renta fija",
-    "act_var": "monto total que el hogar tiene invertido en los diferentes instrumentos de renta variable.",
-    "cap_pen_ent": "saldo en cuenta de capitalización individual ",
-    "edad_pr": "edad de la persona de referencia",
-    "hr_trabajadas_pr": "horas trabajadas por la persona de referencia",
-    "ypenh": "ingreso mensual del hogar por pensiones",
-    "ysubh": "ingreso mensual del hogar por subsidios",
-    "numh": "número de miembros en el hogar",
-    "ocuph": "número de miembros del hogar que se encuentra trabajando",
-    "u_pac": "si algún miembro del hogar utiliza pago automático a las cuentas corrientes",
-    "t_tbco": "si algún miembro del hogar posee tarjetas de crédito bancarias",
-    "u_pat": "si algún miembro del hogar utiliza pago automático a tarjetas de crédito",
-    "u_tbco": "si algún miembro del hogar utiliza como medio de pago las tarjetas de crédito bancarias",
-    "u_cheq": "si algún miembro del hogar utiliza como medio de pago los cheques",
-    "t_cc": "si algún miembro del hogar posee cuenta corriente",
-    "u_prepago": "si algún miembro del hogar utiliza como medio de pago los instrumentos de prepago",
-    "est_civil_pr": "estado civil de la persona de referencia",
-    
-}
 
 def label_var(v: str) -> str:
     return VAR_LABELS.get(v, v)  # si no está, muestra el nombre
@@ -320,7 +593,19 @@ else:
     raw = raw.sort_values(["category_num", "n"], ascending=[True, False]).drop(columns=["category_num"])
 
     # ✅ 4) porcentaje
-    raw["porcentaje"] = (raw["n"] / raw["n"].sum() * 100).round(2).astype(str) + "%"
+    # ✅ asegurar que "n" sea numérico
+    raw["n"] = raw["n"].astype(str).str.replace(r"[^\d\.-]", "", regex=True)  # quita comas, %, espacios, etc.
+    raw["n"] = pd.to_numeric(raw["n"], errors="coerce").fillna(0)
+
+    # (opcional) si quieres n como entero
+    raw["n"] = raw["n"].astype(int)
+
+    # ✅ porcentaje seguro (evita división por 0)
+    den = raw["n"].sum()
+    if den == 0:
+        raw["porcentaje"] = "0%"
+    else:
+        raw["porcentaje"] = (raw["n"] / den * 100).round(2).astype(str) + "%"
 
     # ✅ tabla final (solo 3 columnas)
     table = raw[["category", "n", "porcentaje"]].copy()
@@ -393,4 +678,3 @@ if have_fold_metrics:
     st.success(f"📌 Según el **AUC promedio (OOF)**, el modelo recomendado es: **{best_model}**.")
 else:
     st.info("No hay métricas por fold cargadas. (Falta public_results/metrics_by_fold.csv)")
-
