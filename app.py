@@ -1,7 +1,6 @@
 # ================================================================
 #   DASHBOARD EFH 2021 – Público (MISMO ESTILO)
 #   Fuente: public_results/ (sin EFH cruda)
-#   Cambio solicitado: quitar p-valor y Chi²
 # ================================================================
 
 import streamlit as st
@@ -82,18 +81,18 @@ st.markdown(f"""
 # ---------------------------------------------------------------
 @st.cache_data
 def load_public_eda():
-    summary = pd.read_csv("public_results/eda_summary.csv")
-    meta = pd.read_csv("public_results/eda_meta.csv")
-    num_stats = pd.read_csv("public_results/eda_num_stats.csv")
-    num_hist = pd.read_csv("public_results/eda_num_hist.csv.gz", compression="gzip")
-    cat_counts = pd.read_csv("public_results/eda_cat_counts.csv.gz", compression="gzip")
-    biv_num = pd.read_csv("public_results/eda_biv_num.csv")
-    biv_cat = pd.read_csv("public_results/eda_biv_cat.csv.gz", compression="gzip")
-    corr_long = pd.read_csv("public_results/eda_corr.csv.gz", compression="gzip")
+    summary = pd.read_csv("eda_summary.csv")
+    meta = pd.read_csv("eda_meta.csv")
+    num_stats = pd.read_csv("eda_num_stats.csv")
+    num_hist = pd.read_csv("eda_num_hist.csv.gz", compression="gzip")
+    cat_counts = pd.read_csv("eda_cat_counts.csv.gz", compression="gzip")
+    biv_num = pd.read_csv("eda_biv_num.csv")
+    biv_cat = pd.read_csv("eda_biv_cat.csv.gz", compression="gzip")
+    corr_long = pd.read_csv("eda_corr.csv.gz", compression="gzip")
     return summary, meta, num_stats, num_hist, cat_counts, biv_num, biv_cat, corr_long
 
 @st.cache_data
-def load_metrics_by_fold(path="public_results/metrics_by_fold.csv"):
+def load_metrics_by_fold(path="metrics_by_fold.csv"):
     return pd.read_csv(path)
 
 # ✅ Defaults (para que meta exista siempre)
@@ -678,3 +677,4 @@ if have_fold_metrics:
     st.success(f"📌 Según el **AUC promedio (OOF)**, el modelo recomendado es: **{best_model}**.")
 else:
     st.info("No hay métricas por fold cargadas. (Falta public_results/metrics_by_fold.csv)")
+
